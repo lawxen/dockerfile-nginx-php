@@ -198,13 +198,15 @@ RUN echo @testing http://nl.alpinelinux.org/alpine/edge/testing >> /etc/apk/repo
     freetype-dev \
     sqlite-dev \
     libjpeg-turbo-dev \
+    mariadb-client \
+    vim \
     postgresql-dev && \
     docker-php-ext-configure gd \
       --with-freetype \
       --with-jpeg && \
     #curl iconv session
     #docker-php-ext-install pdo_mysql pdo_sqlite mysqli mcrypt gd exif intl xsl json soap dom zip opcache && \
-    docker-php-ext-install iconv pdo_mysql pdo_sqlite pgsql pdo_pgsql mysqli gd exif intl xsl json soap dom zip opcache && \
+    docker-php-ext-install iconv pdo_mysql pdo_sqlite pgsql pdo_pgsql mysqli gd exif intl xsl json soap dom zip opcache bcmath && \
     pecl install xdebug-2.9.2 && \
     pecl install -o -f redis && \
     echo "extension=redis.so" > /usr/local/etc/php/conf.d/redis.ini && \
@@ -223,11 +225,11 @@ RUN echo @testing http://nl.alpinelinux.org/alpine/edge/testing >> /etc/apk/repo
 #    apk del .sys-deps
 #    ln -s /usr/bin/php7 /usr/bin/php
 
-ADD conf/supervisord.conf /etc/supervisord.conf
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/conf/supervisord.conf /etc/supervisord.conf
 
 # Copy our nginx config
 RUN rm -Rf /etc/nginx/nginx.conf
-ADD conf/nginx.conf /etc/nginx/nginx.conf
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/conf/nginx.conf /etc/nginx/nginx.conf
 
 # nginx site conf
 RUN mkdir -p /etc/nginx/sites-available/ && \
@@ -235,8 +237,8 @@ mkdir -p /etc/nginx/sites-enabled/ && \
 mkdir -p /etc/nginx/ssl/ && \
 rm -Rf /var/www/* && \
 mkdir /var/www/html/
-ADD conf/nginx-site.conf /etc/nginx/sites-available/default.conf
-ADD conf/nginx-site-ssl.conf /etc/nginx/sites-available/default-ssl.conf
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/conf/nginx-site.conf /etc/nginx/sites-available/default.conf
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/conf/nginx-site-ssl.conf /etc/nginx/sites-available/default-ssl.conf
 RUN ln -s /etc/nginx/sites-available/default.conf /etc/nginx/sites-enabled/default.conf
 
 ## disabled due to license changes (to fix in next release)
@@ -272,17 +274,55 @@ RUN echo "cgi.fix_pathinfo=0" > ${php_vars} &&\
 
 
 # Add Scripts
-ADD scripts/start.sh /start.sh
-ADD scripts/pull /usr/bin/pull
-ADD scripts/push /usr/bin/push
-ADD scripts/letsencrypt-setup /usr/bin/letsencrypt-setup
-ADD scripts/letsencrypt-renew /usr/bin/letsencrypt-renew
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/scripts/start.sh /start.sh
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/scripts/pull /usr/bin/pull
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/scripts/push /usr/bin/push
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/scripts/letsencrypt-setup /usr/bin/letsencrypt-setup
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/scripts/letsencrypt-renew /usr/bin/letsencrypt-renew
 RUN chmod 755 /usr/bin/pull && chmod 755 /usr/bin/push && chmod 755 /usr/bin/letsencrypt-setup && chmod 755 /usr/bin/letsencrypt-renew && chmod 755 /start.sh
 
 # copy in code
-ADD src/ /var/www/html/
-ADD errors/ /var/www/errors
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/src/ /var/www/html/
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/config/errors/ /var/www/errors
 
+# set recommended PHP.ini settings
+# see https://secure.php.net/manual/en/opcache.installation.php
+RUN { \
+		echo 'opcache.memory_consumption=128'; \
+		echo 'opcache.interned_strings_buffer=8'; \
+		echo 'opcache.max_accelerated_files=4000'; \
+		echo 'opcache.revalidate_freq=60'; \
+		echo 'opcache.fast_shutdown=1'; \
+	} > /usr/local/etc/php/conf.d/opcache-recommended.ini
+
+RUN set -eux; \
+        echo "memory_limit = 4096M"  >> ${php_vars} && \
+        # Install Drush
+        curl -fsSL -o /usr/local/bin/drush "https://github.com/drush-ops/drush-launcher/releases/download/$DRUSH_VERSION/drush.phar" && \
+        chmod +x /usr/local/bin/drush && \
+        # Install Drupal Console
+        curl https://drupalconsole.com/installer -L -o drupal.phar && \
+        mv drupal.phar /usr/local/bin/drupal && \
+        chmod +x /usr/local/bin/drupal && \
+        rm -rf /etc/nginx/sites-available/default.conf && \
+        rm -rf /etc/nginx/sites-enabled/default.conf
+
+WORKDIR "/var/www"
+
+# Install Drupal
+RUN set -eux; \
+        rm -rf /var/www/html && \
+        composer create-project drupal/recommended-project html && \
+        cd html && \
+        composer require drush/drush && \
+        chown -R www-data:www-data web/sites web/modules web/themes
+
+# Drupal nginx config
+ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/custom_config/conf/drupal8-default.conf /etc/nginx/sites-available/default.conf
+# ADD https://raw.githubusercontent.com/lawxen/dockerfile-nginx-php/master/custom_config/conf/drupal8.conf /etc/nginx/sites-available/drupal8.conf
+RUN set -eux; \
+        ln -s /etc/nginx/sites-available/default.conf /etc/nginx/sites-enabled/default.conf
+        # ln -s /etc/nginx/sites-available/drupal8.conf /etc/nginx/sites-enabled/drupal8.conf
 
 EXPOSE 443 80
 
