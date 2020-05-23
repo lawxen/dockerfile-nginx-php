@@ -38,8 +38,8 @@ WORKDIR "/var/www"
 # Install Drupal
 RUN set -eux; \
         rm -rf /var/www/html && \
-        composer create-project drupal/recommended-project html && \
-        cd html && \
+        composer create-project drupal/recommended-project drupal8-download && \
+        cd drupal8-download && \
         composer require drush/drush && \
         chown -R www-data:www-data web/sites web/modules web/themes
 

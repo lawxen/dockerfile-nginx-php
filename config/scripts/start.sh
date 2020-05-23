@@ -115,6 +115,19 @@ else
   fi
 fi
 
+HTMLDIR=/var/www/html
+if [ "`ls -A ${HTMLDIR}`" = "" ]; then
+  if [ -d "/var/www/drupal8-download" ]; then
+    mv /var/www/drupal8-download/* /var/www/html/
+    mv /var/www/drupal8-download/.[!.]* /var/www/html/
+  fi
+fi
+
+if [ -d "/var/www/drupal8-download" ]; then
+  rm -rf /var/www/drupal8-download
+fi
+
+
 # Start supervisord and services
 exec /usr/bin/supervisord -n -c /etc/supervisord.conf
 
